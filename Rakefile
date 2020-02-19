@@ -1,9 +1,22 @@
-require 'bundler'
-require 'csv'
-Bundler.require
+require 'date'
+require 'bundler/inline'
+
+gemfile do
+  source "https://rubygems.org"
+  gem "faraday"
+  gem "faraday_middleware"
+end
 
 class XboxGamePass
-  def self.names
+  class Game
+    attr_accessor :name
+
+    def initialize(h={})
+      h.each { |k, v| send(:"#{k}=", v) }
+    end
+  end
+
+  def self.games
     collection_url = "https://reco-public.rec.mp.microsoft.com/channels/Reco/v8.0/lists/collection/pcgaVTaz?itemTypes=Devices&DeviceFamily=Windows.Desktop&market=US&language=EN&count=500";
     detail_url = "https://displaycatalog.mp.microsoft.com/v7.0/products?bigIds=PRODUCT_IDS&market=US&languages=en-us&MS-CV=none";
 
@@ -19,27 +32,25 @@ class XboxGamePass
     detail_url = detail_url.sub("PRODUCT_IDS", ids.join(","))
     details = connection.get(detail_url)
 
-    names = details.body["Products"].map do |p|
-      name = p["LocalizedProperties"][0]["ProductTitle"]
+    games = details.body["Products"].map do |p|
+      Game.new(
+        name: name = p["LocalizedProperties"][0]["ProductTitle"]
+      )
     end
 
-    return names
+    return games
   end
 end
 
 task :default => :tsv
 
-task :list do
-  names = XboxGamePass.names
-  puts names
-end
-
+desc "Generates TSV list of games and copies result to clipboard"
 task :tsv do
   result = ""
-  names = XboxGamePass.names
+  games = XboxGamePass.games
   result << "Name\tLibrary\t(updated: #{Date.today})"
-  names.each do |name|
-    result << "\n%s\t%s" % [name, "Xbox Game Pass"]
+  games.each do |game|
+    result << "\n%s\t%s" % [game.name, "Xbox Game Pass"]
   end
 
   IO.popen('pbcopy', 'w') { |f| f << result }
